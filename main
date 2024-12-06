@@ -1,0 +1,105 @@
+from datetime import datetime, timedelta
+import os
+import requests
+from bs4 import BeautifulSoup
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+from dotenv import load_dotenv
+
+# Function to generate the URL with the current date
+
+
+def generate_date_url():
+    today = datetime.now()
+    yesterday = today - timedelta(days=1)  # Use timedelta to subtract one day
+    formatted_date = yesterday.strftime("%Y%m%d")
+    return f"/2757/{formatted_date}_NDVO_visa_decision_list.ods"
+
+# Continue with the rest of your code...
+
+# Load environment variables from .env file
+load_dotenv()
+
+# URL of the main page
+main_page_url = "https://www.ireland.ie/en/india/newdelhi/services/visas/processing-times-and-decisions/"
+
+# Headers for the request
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.5",
+}
+
+# Step 1: Access the main webpage and check the status code
+response = requests.get(main_page_url, headers=headers)
+if response.status_code != 200:
+    print(f"Failed to access the main page. Status code: {response.status_code}")
+    exit()
+
+# Step 2: Parse the page and extract the link
+soup = BeautifulSoup(response.content, "html.parser")
+relative_file_link = generate_date_url()
+
+# Search for the specific anchor tag with the link containing the generated file name
+file_link = soup.find('a', href=relative_file_link)
+
+if not file_link:
+    print("Could not find the file link on the main page.")
+    exit()
+
+# Construct the full URL
+file_url = 'https://www.ireland.ie' + file_link['href']
+
+
+# Step 3: Download the file
+try:
+    file_response = requests.get(file_url, headers=headers)
+    file_response.raise_for_status()  # Raise an error for bad responses
+    file_path = "visa_decision_list.ods"
+
+    with open(file_path, "wb") as file:
+        file.write(file_response.content)
+    print(f"File downloaded successfully: {file_path}")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to download the file: {e}")
+    exit()
+
+# Step 4: Send the file via email
+subject = "New Visa Decision List"
+body = "Please find attached the latest visa decision list."
+
+msg = MIMEMultipart()
+msg['From'] = os.environ["MY_GMAIL"]
+msg['To'] = os.environ["TO_EMAIL"]
+msg['Subject'] = subject
+
+# Attach the body as plain text
+msg.attach(MIMEText(body, 'plain'))
+
+# Attach the file
+with open(file_path, "rb") as attachment:
+    part = MIMEBase('application', 'octet-stream')
+    part.set_payload(attachment.read())
+    encoders.encode_base64(part)
+    part.add_header(
+        "Content-Disposition",
+        f"attachment; filename={os.path.basename(file_path)}",
+    )
+    msg.attach(part)
+
+# Send the email
+try:
+    with smtplib.SMTP("smtp.gmail.com", 587) as connection:
+        connection.starttls()
+        connection.login(user=os.environ["MY_GMAIL"], password=os.environ["PASSWORD"])
+        connection.sendmail(
+            from_addr=os.environ["MY_GMAIL"],
+            to_addrs=os.environ["TO_EMAIL"],
+            msg=msg.as_string()
+        )
+    print("Email sent successfully.")
+except Exception as e:
+    print(f"Failed to send the email: {e}")
+
