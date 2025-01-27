@@ -10,7 +10,7 @@ from email import encoders
 from dotenv import load_dotenv
 
 # Function to generate the URL with the current date
-
+#updated
 
 def generate_date_url():
     today = datetime.now()
